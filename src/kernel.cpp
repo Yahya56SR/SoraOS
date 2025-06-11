@@ -207,7 +207,7 @@ void task2() {
     }
 }
 
-extern "C" void kernel_main() {
+extern "C" void kernel_main(uint32_t* mboot_info_ptr) {
     setup_paging(); // your paging setup
     init_tasking();
     create_task(task1);
