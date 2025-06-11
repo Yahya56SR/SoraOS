@@ -1,89 +1,91 @@
 ; boot.asm - Multiboot-compliant bootloader for 32-bit mode
+MBOOT_PAGE_ALIGN    equ 1<<0
+MBOOT_MEM_INFO      equ 1<<1
+MBOOT_HEADER_MAGIC  equ 0x1BADB002
+MBOOT_HEADER_FLAGS  equ MBOOT_PAGE_ALIGN | MBOOT_MEM_INFO
+MBOOT_CHECKSUM      equ -(MBOOT_HEADER_MAGIC + MBOOT_HEADER_FLAGS)
 
 section .multiboot
 align 4
-    ; Multiboot header
-    dd 0x1BADB002                ; Magic number
-    dd 0x00000003                ; Flags: align modules on page boundaries and provide memory map
-    dd -(0x1BADB002+0x00000003)  ; Checksum
-
-section .data
-align 4
-mboot_info_ptr:
-    dd 0                         ; Store multiboot info pointer here
+    dd MBOOT_HEADER_MAGIC        ; Magic number
+    dd MBOOT_HEADER_FLAGS        ; Flags
+    dd MBOOT_CHECKSUM           ; Checksum
 
 section .bss
 align 16
 stack_bottom:
-    resb 16384                   ; 16 KiB stack
+    resb 16384                  ; 16 KiB stack
 stack_top:
+
+section .data
+align 4
+gdt_start:
+    ; Null descriptor
+    dq 0
+
+gdt_code:
+    ; Code segment
+    dw 0xFFFF       ; Limit (bits 0-15)
+    dw 0            ; Base (bits 0-15)
+    db 0            ; Base (bits 16-23)
+    db 10011010b    ; Access byte
+    db 11001111b    ; Flags + Limit (bits 16-19)
+    db 0            ; Base (bits 24-31)
+
+gdt_data:
+    ; Data segment
+    dw 0xFFFF       ; Limit (bits 0-15)
+    dw 0            ; Base (bits 0-15)
+    db 0            ; Base (bits 16-23)
+    db 10010010b    ; Access byte
+    db 11001111b    ; Flags + Limit (bits 16-19)
+    db 0            ; Base (bits 24-31)
+
+gdt_end:
+
+gdt_descriptor:
+    dw gdt_end - gdt_start - 1  ; GDT size (minus 1)
+    dd gdt_start                ; GDT address
+
+CODE_SEG equ gdt_code - gdt_start
+DATA_SEG equ gdt_data - gdt_start
 
 section .text
 global _start
-global mboot_info_ptr            ; Export memory info to C++
 extern kernel_main
 
 _start:
-    ; Save multiboot info pointer passed in ebx by GRUB
-    mov [mboot_info_ptr], ebx
+    cli                         ; Disable interrupts
     
-    ; Set up the stack
+    ; Set up stack
     mov esp, stack_top
     
-    ; Make sure interrupts are disabled
-    cli
+    ; Save multiboot info pointer
+    push ebx
     
-    ; Load GDT (Global Descriptor Table) for 32-bit mode
+    ; Load GDT
     lgdt [gdt_descriptor]
     
     ; Update segment registers
-    jmp 0x08:reload_segments     ; Far jump to code segment
-    
-reload_segments:
-    mov ax, 0x10                 ; Data segment selector
+    jmp CODE_SEG:.reload_cs    ; Far jump to set CS
+.reload_cs:
+    mov ax, DATA_SEG
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
     
-    ; Enable A20 line (might already be enabled by bootloader)
+    ; Enable A20 line
     in al, 0x92
     or al, 2
     out 0x92, al
     
-    ; Call the kernel main function
-    push mboot_info_ptr          ; Pass multiboot info pointer to kernel
+    ; Initialize core kernel features
     call kernel_main
     
-    ; If the kernel returns, hang the CPU
-hang:
-    cli                          ; Disable interrupts
-    hlt                          ; Halt the CPU
-    jmp hang                     ; Just in case
-
-; GDT (Global Descriptor Table)
-align 8
-gdt:
-    ; Null descriptor
-    dq 0
-
-    ; Code segment descriptor
-    dw 0xFFFF       ; Limit (bits 0-15)
-    dw 0            ; Base (bits 0-15)
-    db 0            ; Base (bits 16-23)
-    db 10011010b    ; Access byte: Present, Ring 0, Code Segment, Executable, Direction 0, Readable
-    db 11001111b    ; Flags + Limit (bits 16-19): Granularity 1, 32-bit, Limit (bits 16-19)
-    db 0            ; Base (bits 24-31)
-
-    ; Data segment descriptor
-    dw 0xFFFF       ; Limit (bits 0-15)
-    dw 0            ; Base (bits 0-15)
-    db 0            ; Base (bits 16-23)
-    db 10010010b    ; Access byte: Present, Ring 0, Data Segment, Not Executable, Direction 0, Writable
-    db 11001111b    ; Flags + Limit (bits 16-19): Granularity 1, 32-bit, Limit (bits 16-19)
-    db 0            ; Base (bits 24-31)
-
-gdt_descriptor:
-    dw gdt_descriptor - gdt - 1  ; GDT size (minus 1)
-    dd gdt                       ; GDT address
+    ; If kernel returns, hang the CPU
+.hang:
+    cli                        ; Disable interrupts
+    hlt                       ; Halt the CPU
+    jmp .hang                 ; Just in case
