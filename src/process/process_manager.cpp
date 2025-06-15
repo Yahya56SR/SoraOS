@@ -1,73 +1,58 @@
 #include "process/process_manager.h"
 #include "tasking.h"
 #include <stddef.h>
-#include <stdint.h>
-
-// Kernel utility functions
-extern "C" {
-    void* kmalloc(size_t size);
-    void kfree(void* ptr);
-    void kmemset(void* dest, int val, size_t len);
-    void kmemcpy(void* dest, const void* src, size_t len);
-}
-
-// Global operators must be outside any namespace
-void* operator new(size_t size) {
-    return kmalloc(size);
-}
-
-void operator delete(void* ptr) {
-    kfree(ptr);
-}
-
-void* operator new(size_t, void* ptr) {
-    return ptr;
-}
 
 namespace Kernel {
 
-// Define constants
-#define KERNEL_MAX_PROCESSES 64
-
-// Static member initialization
-alignas(8) static uint8_t process_memory[KERNEL_MAX_PROCESSES * sizeof(Process)];
-static bool process_slots[KERNEL_MAX_PROCESSES] = {false};
-Process* ProcessManager::processes[KERNEL_MAX_PROCESSES] = {nullptr};
-Process* ProcessManager::current_process = nullptr;
-uint32_t ProcessManager::next_pid = 1;
-
 void ProcessManager::initialize() {
-    kmemset(processes, 0, sizeof(processes));
-    kmemset(process_slots, 0, sizeof(process_slots));
+    for (size_t i = 0; i < MAX_PROCESSES; i++) {
+        processes[i] = nullptr;
+    }
     current_process = nullptr;
     next_pid = 1;
 }
 
 Process* ProcessManager::create_process(const char* name) {
-    // Find free slot in preallocated memory
-    for (size_t i = 0; i < KERNEL_MAX_PROCESSES; i++) {
-        if (!process_slots[i]) {
-            Process* new_process = reinterpret_cast<Process*>(&process_memory[i * sizeof(Process)]);
-            // Placement new
-            new (new_process) Process(name);
-            new_process->pid = next_pid++;
-            new_process->state = Process::READY;
-            processes[i] = new_process;
-            process_slots[i] = true;
-            return new_process;
+    // Find free slot
+    size_t slot = MAX_PROCESSES;
+    for (size_t i = 0; i < MAX_PROCESSES; i++) {
+        if (processes[i] == nullptr) {
+            slot = i;
+            break;
         }
     }
-    return nullptr;
+    
+    if (slot == MAX_PROCESSES) {
+        return nullptr; // No free slots
+    }
+    
+    // Create new process
+    Process* process = new Process(name);
+    if (!process) {
+        return nullptr;
+    }
+    
+    process->pid = next_pid++;
+    process->state = Process::CREATED;
+    
+    // Allocate memory for the process
+    if (!allocate_process_memory(process)) {
+        delete process;
+        return nullptr;
+    }
+    
+    processes[slot] = process;
+    return process;
 }
 
 void ProcessManager::destroy_process(Process* process) {
     if (!process) return;
     
     // Find process in array
-    for (size_t i = 0; i < KERNEL_MAX_PROCESSES; i++) {
+    for (size_t i = 0; i < MAX_PROCESSES; i++) {
         if (processes[i] == process) {
-            process->~Process(); // Call destructor explicitly
-            process_slots[i] = false;
+            free_process_memory(process);
+            delete process;
             processes[i] = nullptr;
             if (current_process == process) {
                 current_process = nullptr;
@@ -75,6 +60,16 @@ void ProcessManager::destroy_process(Process* process) {
             break;
         }
     }
+}
+
+bool ProcessManager::start_process(Process* process) {
+    if (!process || process->state != Process::CREATED) {
+        return false;
+    }
+    
+    process->state = Process::READY;
+    switch_to_user_mode(process);
+    return true;
 }
 
 void ProcessManager::switch_to_user_mode(Process* process) {
@@ -110,9 +105,9 @@ void ProcessManager::schedule() {
     if (!current_process) return;
     
     // Find next ready process
-    size_t start = current_process->pid % KERNEL_MAX_PROCESSES;
-    for (size_t i = 0; i < KERNEL_MAX_PROCESSES; i++) {
-        size_t idx = (start + i) % KERNEL_MAX_PROCESSES;
+    size_t start = current_process->pid % MAX_PROCESSES;
+    for (size_t i = 0; i < MAX_PROCESSES; i++) {
+        size_t idx = (start + i) % MAX_PROCESSES;
         if (processes[idx] && processes[idx]->state == Process::READY) {
             Process* next = processes[idx];
             current_process->state = Process::READY;
@@ -120,7 +115,7 @@ void ProcessManager::schedule() {
             Process* prev = current_process;
             current_process = next;
             
-            // Call existing task switcher
+            // Call task switcher
             ::yield(); // Call global yield from tasking.h
             break;
         }
@@ -130,5 +125,39 @@ void ProcessManager::schedule() {
 void ProcessManager::yield() {
     ::yield(); // Call global yield from tasking.h
 }
+
+bool ProcessManager::allocate_process_memory(Process* process) {
+    // Simple memory allocation - you should implement proper memory management
+    static uint32_t next_address = 0x100000; // Start at 1MB
+    
+    const size_t code_size = 64 * 1024;  // 64KB for code
+    const size_t data_size = 64 * 1024;  // 64KB for data
+    const size_t stack_size = 64 * 1024; // 64KB for stack
+    
+    process->code_start = next_address;
+    process->code_size = code_size;
+    next_address += code_size;
+    
+    process->data_start = next_address;
+    process->data_size = data_size;
+    next_address += data_size;
+    
+    process->stack_start = next_address;
+    process->stack_size = stack_size;
+    next_address += stack_size;
+    
+    // Align next_address to 4KB boundary
+    next_address = (next_address + 0xFFF) & ~0xFFF;
+    
+    return true;
+}
+
+void ProcessManager::free_process_memory(Process* process) {
+    // Should implement proper memory deallocation
+    // For now, we just mark the process as terminated
+    process->state = Process::TERMINATED;
+}
+
+
 
 } // namespace Kernel

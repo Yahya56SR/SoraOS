@@ -1,44 +1,42 @@
 ; interrupt_stubs.asm
 [BITS 32]
 
+[GLOBAL isr_stub]
+[GLOBAL load_idt]
+[EXTERN handle_interrupt]
+
 section .text
 
 ; Export symbols
 global isr_stub_table
 global isr_stub
 
-; Common ISR stub
-extern handle_interrupt
+; Common ISR stub that calls a C handler
 isr_stub:
-    ; Save registers
-    pusha
-    push ds
-    push es
-    push fs
-    push gs
+    pusha           ; Push all registers
     
-    ; Load kernel data segment
-    mov ax, 0x10
+    mov ax, ds      ; Save data segment
+    push eax
+    
+    mov ax, 0x10    ; Load kernel data segment
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     
-    ; Call C++ handler
-    push esp    ; Push stack pointer as argument
+    push esp        ; Push pointer to stack frame
     call handle_interrupt
-    add esp, 4  ; Clean up argument
+    add esp, 4      ; Clean up stack
     
-    ; Restore registers
-    pop gs
-    pop fs
-    pop es
-    pop ds
-    popa
+    pop eax         ; Restore data segment
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
     
-    ; Clean up error code and interrupt number
-    add esp, 8
-    iret
+    popa            ; Restore registers
+    add esp, 8      ; Clean up error code and interrupt number
+    iret            ; Return from interrupt
 
 ; Generate ISR stubs
 %macro ISR_NOERRCODE 1
@@ -99,3 +97,9 @@ isr_stub_table:
     dd isr%+i      ; Store address of each ISR handler
 %assign i i+1
 %endrep
+
+; Load IDT
+load_idt:
+    mov eax, [esp + 4]  ; Get pointer to IDT
+    lidt [eax]         ; Load IDT
+    ret

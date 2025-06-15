@@ -17,7 +17,6 @@ void* kmalloc(size_t size) {
 }
 
 void kfree(void* ptr) {
-    // Simple implementation - no actual freeing
     (void)ptr;
 }
 
