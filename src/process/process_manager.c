@@ -1,5 +1,5 @@
-#include "process/process_manager.h"
-#include "tasking.h"
+#include "../include/process/process_manager.h"
+#include "../include/tasking.h"
 #include <stddef.h>
 #include <stdint.h>
 

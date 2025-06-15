@@ -2,18 +2,10 @@
 #define VECTORS_H
 
 #include <stddef.h> // For size_t
-
+#include <string.h>
 // Since we're in freestanding mode, we can't use std::vector.
 // We'll provide a simple string concatenation function for C-style strings.
 // This is a very basic implementation and doesn't handle all cases.
-
-size_t strlen(const char* str) {
-    size_t len = 0;
-    while (str[len] != '\0') {
-        len++;
-    }
-    return len;
-}
 
 // Concatenates multiple C-style strings into a single buffer.
 // Requires the caller to provide a buffer large enough to hold the result.

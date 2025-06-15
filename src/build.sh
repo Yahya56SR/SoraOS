@@ -23,7 +23,7 @@ nasm -f elf32 -g -F dwarf interrupt_stubs.asm -o build/interrupt_stubs.o
 
 # Compile C files with debug info
 echo "Compiling C files..."
-CFLAGS="-m32 -ffreestanding -O0 -g3 -I./include"
+CFLAGS="-m32 -ffreestanding -O0 -g3 -I/user/include"
 gcc $CFLAGS -c kernel.c -o build/kernel.o
 gcc $CFLAGS -c paging.c -o build/paging.o
 gcc $CFLAGS -c tasking.c -o build/tasking.o
