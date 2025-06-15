@@ -1,12 +1,15 @@
 {
-    "files.associations": {
-        "array": "cpp",
-        "deque": "cpp",
-        "string": "cpp",
-        "unordered_map": "cpp",
-        "vector": "cpp",
-        "string_view": "cpp",
-        "initializer_list": "cpp"
-    },
-    "C_Cpp.errorSquiggles": "disabled"
+  "files.associations": {
+    "*.embeddedhtml": "html",
+    "array": "cpp",
+    "deque": "cpp",
+    "string": "cpp",
+    "unordered_map": "cpp",
+    "vector": "cpp",
+    "string_view": "cpp",
+    "initializer_list": "cpp",
+    "charconv": "cpp",
+    "paging.h": "c"
+  },
+  "C_Cpp.errorSquiggles": "disabled"
 }

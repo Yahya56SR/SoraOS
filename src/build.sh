@@ -2,58 +2,50 @@
 
 set -e
 
-# Install dependencies if needed
-sudo apt-get install -y g++ nasm qemu-system-x86 grub-pc-bin xorriso mtools
+# Check if dependencies are installed (Debian/Ubuntu)
+if ! command -v gcc &> /dev/null || ! command -v nasm &> /dev/null || \
+   ! command -v qemu-system-x86 &> /dev/null || ! command -v grub-mkrescue &> /dev/null || \
+   ! command -v xorriso &> /dev/null || ! command -v mtools &> /dev/null; then
+    echo "Installing dependencies (Debian/Ubuntu)..."
+    sudo apt-get update
+    sudo apt-get install -y gcc nasm qemu-system-x86 grub-pc-bin xorriso mtools
+fi
 
 # Create build directory
 mkdir -p build
 
-# Compile assembly files
+# Compile assembly files with debug info
 echo "Compiling assembly files..."
-nasm -f elf32 boot.asm -o build/boot.o
-nasm -f elf32 switch_task.asm -o build/switch_task.o
-nasm -f elf32 interrupt_stubs.asm -o build/interrupt_stubs.o
-nasm -f elf32 keyboard_interrupt.asm -o build/keyboard_interrupt.o
+nasm -f elf32 -g -F dwarf boot.asm -o build/boot.o
+nasm -f elf32 -g -F dwarf switch_task.asm -o build/switch_task.o
+nasm -f elf32 -g -F dwarf interrupt_stubs.asm -o build/interrupt_stubs.o
 
-# Common compiler flags
-CXXFLAGS="-m32 -ffreestanding -fno-exceptions -fno-rtti -O0 -g3 -I./include"
-CXXFLAGS+=" -fno-builtin -nostdlib -nostdinc++ -Wall -Wextra"
+# Compile C files with debug info
+echo "Compiling C files..."
+CFLAGS="-m32 -ffreestanding -O0 -g3 -I./include"
+gcc $CFLAGS -c kernel.c -o build/kernel.o
+gcc $CFLAGS -c paging.c -o build/paging.o
+gcc $CFLAGS -c tasking.c -o build/tasking.o
+gcc $CFLAGS -c io.c -o build/io.o
+gcc $CFLAGS -c process/process.c -o build/process/process.o
+gcc $CFLAGS -c process/process_manager.c -o build/process/process_manager.o
+gcc $CFLAGS -c interrupts.c -o build/interrupts.o
+gcc $CFLAGS -c liballoc.c -o build/liballoc.o
+gcc $CFLAGS -c memorys.c -o build/memorys.o
 
-# Compile C++ files
-echo "Compiling C++ files..."
-g++ $CXXFLAGS -c kernel_util.cpp -o build/kernel_util.o
-g++ $CXXFLAGS -c operators.cpp -o build/operators.o
-g++ $CXXFLAGS -c kernel.cpp -o build/kernel.o
-g++ $CXXFLAGS -c paging.cpp -o build/paging.o
-g++ $CXXFLAGS -c tasking.cpp -o build/tasking.o
-g++ $CXXFLAGS -c process/process.cpp -o build/process.o
-g++ $CXXFLAGS -c process/process_manager.cpp -o build/process_manager.o
-g++ $CXXFLAGS -c interrupts.cpp -o build/interrupts.o
-g++ $CXXFLAGS -c shell.cpp -o build/shell.o
-g++ $CXXFLAGS -c keyboard.cpp -o build/keyboard.o
-
-# Link the kernel
+# Link with debug info
 echo "Linking kernel..."
-ld -melf_i386 -T linker.ld -o build/kernel.bin \
-    build/boot.o \
-    build/switch_task.o \
-    build/interrupt_stubs.o \
-    build/keyboard_interrupt.o \
-    build/kernel_util.o \
-    build/operators.o \
-    build/kernel.o \
-    build/paging.o \
-    build/tasking.o \
-    build/process.o \
-    build/process_manager.o \
-    build/interrupts.o \
-    build/shell.o \
-    build/keyboard.o
+ld -m elf_i386 -T linker.ld -o build/kernel.bin \
+   build/boot.o build/switch_task.o build/interrupt_stubs.o \
+   build/kernel.o build/paging.o build/tasking.o \
+   build/io.o build/process/process.o build/process/process_manager.o \
+   build/interrupts.o build/liballoc.o build/memorys.o
 
 # Create ISO
 echo "Creating bootable ISO..."
 mkdir -p build/iso/boot/grub
 cp build/kernel.bin build/iso/boot/
+
 cat > build/iso/boot/grub/grub.cfg << EOF
 set timeout=0
 set default=0
@@ -66,6 +58,5 @@ EOF
 
 grub-mkrescue -o build/cos.iso build/iso
 
-# Run QEMU
-echo "Starting QEMU..."
+# Run with debug output
 qemu-system-i386 -cdrom build/cos.iso -no-reboot -d int,cpu_reset -monitor stdio

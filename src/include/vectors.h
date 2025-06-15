@@ -1,270 +1,44 @@
-#pragma once
+#ifndef VECTORS_H
+#define VECTORS_H
 
-// Define a size type since we can't use std::size_t
-using size_t = unsigned int;
+#include <stddef.h> // For size_t
 
-// Custom placement new and delete operators
-inline void *operator new(size_t, void *p) noexcept { return p; }
-inline void operator delete(void *, void *) noexcept {}
+// Since we're in freestanding mode, we can't use std::vector.
+// We'll provide a simple string concatenation function for C-style strings.
+// This is a very basic implementation and doesn't handle all cases.
 
-template <typename T>
-class vector
-{
-private:
-    T *arr;              // Pointer to the dynamic array
-    size_t current_size; // Number of elements currently stored
-    size_t cap;          // Total allocated capacity
-
-    // Helper function to destroy all constructed elements
-    void destroy_elements()
-    {
-        for (size_t i = 0; i < current_size; ++i)
-        {
-            arr[i].~T();
-        }
-    }
-
-public:
-    // Default constructor: initialize with capacity 10
-    vector() : current_size(0), cap(10)
-    {
-        char *raw = new char[sizeof(T) * cap];
-        arr = reinterpret_cast<T *>(raw);
-    }
-
-    // Construct from pointer range
-    vector(const T* start, const T* end) : current_size(0), cap(end - start)
-    {
-        char *raw = new char[sizeof(T) * cap];
-        arr = reinterpret_cast<T *>(raw);
-        for (size_t i = 0; i < cap; ++i)
-        {
-            new (arr + i) T(start[i]);
-        }
-        current_size = cap;
-    }
-
-    // Destructor: clean up elements and memory
-    ~vector()
-    {
-        destroy_elements();
-        delete[] reinterpret_cast<char *>(arr);
-    }
-
-    // Add an element to the end
-    void push_back(const T &value)
-    {
-        if (current_size == cap)
-        {
-            size_t new_cap = cap * 2;
-            char *new_raw = new char[sizeof(T) * new_cap];
-            T *new_arr = reinterpret_cast<T *>(new_raw);
-            for (size_t i = 0; i < current_size; ++i)
-            {
-                new (new_arr + i) T(arr[i]); // Copy existing elements
-            }
-            destroy_elements();
-            delete[] reinterpret_cast<char *>(arr);
-            arr = new_arr;
-            cap = new_cap;
-        }
-        new (arr + current_size) T(value); // Construct new element
-        ++current_size;
-    }
-
-    // Remove the last element
-    void pop_back()
-    {
-        if (current_size > 0)
-        {
-            --current_size;
-            arr[current_size].~T(); // Destroy the last element
-        }
-    }
-
-    // Return the number of elements
-    size_t size() const
-    {
-        return current_size;
-    }
-
-    // Return the current capacity
-    size_t capacity() const
-    {
-        return cap;
-    }
-
-    bool empty() const
-    {
-        return current_size == 0 ? true : false;
-    }
-
-    // Element access (non-const)
-    T &operator[](size_t index)
-    {
-        return arr[index];
-    }
-
-    // Element access (const)
-    const T &operator[](size_t index) const
-    {
-        return arr[index];
-    }
-
-    // Copy constructor
-    vector(const vector &other) : current_size(other.current_size), cap(other.cap)
-    {
-        char *raw = new char[sizeof(T) * cap];
-        arr = reinterpret_cast<T *>(raw);
-        for (size_t i = 0; i < current_size; ++i)
-        {
-            new (arr + i) T(other.arr[i]); // Deep copy elements
-        }
-    }
-
-    // Copy assignment operator
-    vector &operator=(const vector &other)
-    {
-        if (this != &other)
-        {
-            destroy_elements();
-            delete[] reinterpret_cast<char *>(arr);
-            current_size = other.current_size;
-            cap = other.cap;
-            char *raw = new char[sizeof(T) * cap];
-            arr = reinterpret_cast<T *>(raw);
-            for (size_t i = 0; i < current_size; ++i)
-            {
-                new (arr + i) T(other.arr[i]);
-            }
-        }
-        return *this;
-    }
-
-    // Move constructor
-    vector(vector &&other) : arr(other.arr), current_size(other.current_size), cap(other.cap)
-    {
-        other.arr = nullptr;
-        other.current_size = 0;
-        other.cap = 0;
-    }
-
-    // Move assignment operator
-    vector &operator=(vector &&other)
-    {
-        if (this != &other)
-        {
-            destroy_elements();
-            delete[] reinterpret_cast<char *>(arr);
-            arr = other.arr;
-            current_size = other.current_size;
-            cap = other.cap;
-            other.arr = nullptr;
-            other.current_size = 0;
-            other.cap = 0;
-        }
-        return *this;
-    }
-
-    // Remove all elements (keep capacity)
-    void clear()
-    {
-        destroy_elements();
-        current_size = 0;
-    }
-
-    // Resize the vector to n elements
-    void resize(size_t n)
-    {
-        if (n > cap)
-        {
-            size_t new_cap = n > 2 * cap ? n : 2 * cap;
-            char *new_raw = new char[sizeof(T) * new_cap];
-            T *new_arr = reinterpret_cast<T *>(new_raw);
-            for (size_t i = 0; i < current_size; ++i)
-            {
-                new (new_arr + i) T(arr[i]); // Copy existing elements
-            }
-            for (size_t i = current_size; i < n; ++i)
-            {
-                new (new_arr + i) T(); // Default construct new elements
-            }
-            destroy_elements();
-            delete[] reinterpret_cast<char *>(arr);
-            arr = new_arr;
-            cap = new_cap;
-            current_size = n;
-        }
-        else if (n > current_size)
-        {
-            for (size_t i = current_size; i < n; ++i)
-            {
-                new (arr + i) T(); // Default construct additional elements
-            }
-            current_size = n;
-        }
-        else
-        {
-            for (size_t i = n; i < current_size; ++i)
-            {
-                arr[i].~T(); // Destroy excess elements
-            }
-            current_size = n;
-        }
-    }
-
-    // Reserve capacity for at least n elements
-    void reserve(size_t n)
-    {
-        if (n > cap)
-        {
-            char *new_raw = new char[sizeof(T) * n];
-            T *new_arr = reinterpret_cast<T *>(new_raw);
-            for (size_t i = 0; i < current_size; ++i)
-            {
-                new (new_arr + i) T(arr[i]); // Copy existing elements
-            }
-            destroy_elements();
-            delete[] reinterpret_cast<char *>(arr);
-            arr = new_arr;
-            cap = n;
-        }
-    }
-
-    // Iterator support
-    T *begin()
-    {
-        return arr;
-    }
-
-    T *end()
-    {
-        return arr + current_size;
-    }
-
-    const T *begin() const
-    {
-        return arr;
-    }
-
-    const T *end() const
-    {
-        return arr + current_size;
-    }
-};
-
-// Helper function: convert C string to vector<char>
-inline vector<char> to_vector(const char* str) {
+size_t strlen(const char* str) {
     size_t len = 0;
-    while (str[len]) ++len;
-    return vector<char>(str, str + len);
+    while (str[len] != '\0') {
+        len++;
+    }
+    return len;
 }
 
-// Helper: concatenate vectors of char
-inline vector<char> concat(const vector<vector<char>>& vecs) {
-    vector<char> result;
-    for (size_t i = 0; i < vecs.size(); ++i)
-        for (size_t j = 0; j < vecs[i].size(); ++j)
-            result.push_back(vecs[i][j]);
-    return result;
+// Concatenates multiple C-style strings into a single buffer.
+// Requires the caller to provide a buffer large enough to hold the result.
+// Returns the length of the concatenated string.
+size_t concat_strings(char* dest, size_t dest_size, const char* strs[], size_t num_strs) {
+    size_t total_len = 0;
+    for (size_t i = 0; i < num_strs; ++i) {
+        total_len += strlen(strs[i]);
+    }
+
+    if (total_len >= dest_size) {
+        // Handle error: destination buffer too small
+        return 0; // Or some error code
+    }
+
+    size_t current_pos = 0;
+    for (size_t i = 0; i < num_strs; ++i) {
+        const char* str = strs[i];
+        size_t len = strlen(str);
+        for (size_t j = 0; j < len; ++j) {
+            dest[current_pos++] = str[j];
+        }
+    }
+    dest[current_pos] = '\0'; // Null-terminate the string
+    return current_pos;
 }
+
+#endif

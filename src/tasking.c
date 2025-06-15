@@ -1,12 +1,13 @@
 #include "include/tasking.h"
+#include <stdint.h>
 
 Task tasks[MAX_TASKS];
 int current_task = -1;
 
 uint8_t task_stacks[MAX_TASKS][4096];
 
-extern "C" void switch_task(uint32_t* save_esp, uint32_t new_esp, uint32_t* save_eip, uint32_t new_eip);
-extern "C" void enter_task(uint32_t eip, uint32_t esp);
+extern void switch_task(uint32_t* save_esp, uint32_t new_esp, uint32_t* save_eip, uint32_t new_eip);
+extern void enter_task(uint32_t eip, uint32_t esp);
 
 // Function to handle task completion/exit
 void task_exit() {
