@@ -1,138 +1,157 @@
-#include "include/io.h"
-#include "include/vectors.h" // For strlen
 #include "include/liballoc.h"
-#include <stdbool.h>
+#include <stdbool.h> // Include stdbool.h
+#include <stdint.h>
+#include <stddef.h> // For size_t
+#include <string.h> // Include string.h
+#include "include/vectors.h"
+#include "include/consts.h"
 
-size_t cursor_x = 0;
-size_t cursor_y = 0;
-uint16_t* vga_buffer = (uint16_t*)0xB8000;
+// Define the I/O ports for the keyboard
+#define KEYBOARD_DATA_PORT 0x60
+#define KEYBOARD_STATUS_PORT 0x64
 
-// Define the arrays (assuming they are in keyboard.cpp or similar)
-uint8_t scancode_ascii_normal[] = { /* ... your scancode to ASCII mapping ... */ };
-uint8_t scancode_ascii_shifted[] = { /* ... your shifted scancode to ASCII mapping ... */ };
-
-void scroll_screen(uint16_t* buffer) {
-    // ... your scroll screen implementation ...
+// Function to read a byte from an I/O port
+uint8_t inb(uint16_t port) {
+    uint8_t value;
+    asm volatile("inb %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
 }
 
-char scancode_to_ascii(uint8_t scancode, int shift_pressed) {
-    return shift_pressed ? scancode_ascii_shifted[scancode] : scancode_ascii_normal[scancode];
+// Function to write a byte to an I/O port
+static inline void outb(uint16_t port, uint8_t val) {
+    asm volatile("outb %0, %1" : : "a"(val), "Nd"(port));
 }
 
-void print_char(char c, int inplace, int color) {
-    if (c == '\n') {
+// Function to read a byte from the keyboard
+uint8_t keyboard_inb(uint16_t port) {
+    return inb(port);
+}
+
+// Function to print a character to the screen
+void print_char(char character, uint8_t color) {
+    static uint16_t* video_memory = (uint16_t*)0xB8000;
+    static uint8_t cursor_x = 0;
+    static uint8_t cursor_y = 0;
+
+    // Handle backspace
+    if (character == 0x08 && cursor_x) {
+        cursor_x--;
+    }
+    // Handle tab
+    else if (character == 0x09) {
+        cursor_x = (cursor_x + 8) & ~(8 - 1);
+    }
+    // Handle carriage return
+    else if (character == '\r') {
+        cursor_x = 0;
+    }
+    // Handle newline
+    else if (character == '\n') {
         cursor_x = 0;
         cursor_y++;
-    } else {
-        uint16_t position = cursor_y * VGA_WIDTH + cursor_x;
-        vga_buffer[position] = (color << 8) | c;
+    }
+    // Handle printable characters
+    else if (character >= ' ') {
+        uint16_t attribute = color << 8;
+        uint16_t* screen_char = video_memory + (cursor_y * 80 + cursor_x);
+        *screen_char = character | attribute;
         cursor_x++;
     }
 
-    if (cursor_x >= VGA_WIDTH) {
+    // Check if cursor needs to wrap
+    if (cursor_x >= 80) {
         cursor_x = 0;
         cursor_y++;
     }
 
-    if (cursor_y >= VGA_HEIGHT) {
-        scroll_screen(vga_buffer);
+    // Scroll the screen if necessary
+    if (cursor_y >= 25) {
+        // Copy each line to the line above it
+        for (size_t y = 0; y < 24; y++) {
+            for (size_t x = 0; x < 80; x++) {
+                video_memory[y * 80 + x] = video_memory[(y + 1) * 80 + x];
+            }
+        }
+
+        // Clear the last line
+        for (size_t x = 0; x < 80; x++) {
+            video_memory[24 * 80 + x] = 0;
+        }
+
+        cursor_y = 24;
     }
 }
 
-void print_string(const char *str, int color) {
-    for (size_t i = 0; str[i] != '\0'; ++i) {
-        print_char(str[i], 0, color); //inplace is always 0
+// Function to print a string to the screen
+void print_string(const char* str, uint8_t color) {
+    for (size_t i = 0; str[i] != '\0'; i++) {
+        print_char(str[i], color);
     }
 }
 
-void print_int(int x, int color) {
-    char str[12]; // Enough to hold -2147483648 + null terminator
-    int i = 0;
-    int is_negative = 0;
-
-    if (x < 0) {
-        is_negative = 1;
-        x = -x;
-    }
-
-    if (x == 0) {
-        str[i++] = '0';
-    } else {
-        while (x > 0) {
-            str[i++] = (x % 10) + '0';
-            x /= 10;
+// Function to clear the screen
+void clear_screen(uint8_t color) {
+    uint16_t attribute = color << 8;
+    uint16_t* video_memory = (uint16_t*)0xB8000;
+    for (size_t y = 0; y < 25; y++) {
+        for (size_t x = 0; x < 80; x++) {
+            video_memory[y * 80 + x] = ' ' | attribute;
         }
     }
-
-    if (is_negative) {
-        str[i++] = '-';
-    }
-
-    str[i] = '\0';
-
-    // Reverse the string
-    int start = 0;
-    int end = i - 1;
-    while (start < end) {
-        char temp = str[start];
-        str[start] = str[end];
-        str[end] = temp;
-        start++;
-        end--;
-    }
-
-    print_string(str, color);
 }
 
-uint8_t scankey() {
-    while (!(keyboard_inb(0x64) & 0x1));
-    return keyboard_inb(0x60);
-}
+// Function to get input from the keyboard
+void input(char* buffer, size_t max_size, uint8_t color) {
+    size_t i = 0;
+    uint8_t keycode;
 
-void input(char* buffer, size_t buffer_size, int color) {
-    size_t visual_cursor_x = 0;
-    size_t visual_cursor_y = cursor_y;
-    size_t current_index = 0;
-    int shift_pressed = 0;
+    clear_screen(VGA_COLOR_BLACK);
+    print_string("Enter text: ", color);
 
     while (true) {
-        uint8_t scancode = scankey();
+        // Wait for a key to be pressed
+        do {
+            keycode = keyboard_inb(KEYBOARD_DATA_PORT);
+        } while (keycode == 0);
 
-        switch (scancode) {
-            case ENTER:
-                buffer[current_index] = '\0';
-                print_char('\n', 0, color);
-                return;
-            case SHIFT_PRESSED_LEFT:
-            case SHIFT_PRESSED_RIGHT:
-                shift_pressed = 1;
-                break;
-            case SHIFT_RELEASED_LEFT:
-            case SHIFT_RELEASED_RIGHT:
-                shift_pressed = 0;
-                break;
-            case BACKSPACE:
-                if (current_index > 0) {
-                    current_index--;
-                    if (cursor_x > 0) {
-                        cursor_x--;
-                    } else {
-                        cursor_y--;
-                        cursor_x = VGA_WIDTH - 1;
-                    }
-                    uint16_t position = cursor_y * VGA_WIDTH + cursor_x;
-                    vga_buffer[position] = (color << 8) | ' ';
-                }
-                break;
-            default:
-                if (current_index < buffer_size - 1) {
-                    if (scancode < KEY_LIMIT) {
-                        char c = scancode_to_ascii(scancode, shift_pressed);
-                        buffer[current_index++] = c;
-                        print_char(c, 0, color);
-                    }
-                }
-                break;
+        // Check if the key is a printable character
+        if (keycode >= 0x02 && keycode <= 0x39) {
+            char character = keycode + 29; // Convert keycode to ASCII
+            if (i < max_size - 1) {
+                buffer[i++] = character;
+                print_char(character, color);
+            }
+        }
+        // Check if the key is backspace
+        else if (keycode == 0x0E && i > 0) {
+            i--;
+            print_char(0x08, color); // Backspace character
+        }
+        // Check if the key is enter
+        else if (keycode == 0x1C) {
+            buffer[i] = '\0';
+            print_char('\n', color);
+            break;
         }
     }
+}
+
+// Function to concatenate multiple strings into a single buffer
+size_t concat_strings(char* dest, size_t dest_size, const char* src[], size_t num_src) {
+    size_t total_length = 0;
+    for (size_t i = 0; i < num_src; ++i) {
+        total_length += strlen(src[i]);
+    }
+
+    if (total_length >= dest_size) {
+        // Handle the error: string is too long to fit in the destination buffer
+        return 0;
+    }
+
+    dest[0] = '\0'; // Initialize the destination buffer to an empty string
+    for (size_t i = 0; i < num_src; ++i) {
+        strcat(dest, src[i]);
+    }
+
+    return total_length;
 }

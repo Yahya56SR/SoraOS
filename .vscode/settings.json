@@ -11,7 +11,8 @@
     "charconv": "cpp",
     "paging.h": "c",
     "string.h": "c",
-    "liballoc.h": "c"
+    "liballoc.h": "c",
+    "vectors.h": "c"
   },
   "C_Cpp.errorSquiggles": "disabled"
 }

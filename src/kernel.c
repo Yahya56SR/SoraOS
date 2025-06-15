@@ -10,6 +10,8 @@
 #include "include/liballoc.h"
 #include <stddef.h> // For NULL
 #include <stdint.h>
+#include <string.h> // Include string.h
+#include "include/interrupts.h" // Include interrupts.h
 
 extern uint32_t end; // Defined in linker.ld
 

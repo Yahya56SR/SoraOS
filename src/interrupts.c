@@ -1,43 +1,30 @@
 #include "include/interrupts.h"
-#include "include/io.h"
-#include <stddef.h>
 
-// Global IDT table and pointer
-static IDTEntry idt[256];
-static IDTPointer idt_ptr;
+IDTEntry idt[256];
+IDTPointer idt_ptr;
 
-void interrupt_manager_initialize() {
-    // Setup IDT pointer
+void init_interrupts() {
+    // Set up IDT pointer
     idt_ptr.limit = sizeof(IDTEntry) * 256 - 1;
     idt_ptr.base = (uint32_t)&idt;
 
     // Clear IDT
-    for (size_t i = 0; i < 256; i++) {
-        interrupt_manager_set_handler(i, NULL);
+    for (int i = 0; i < 256; i++) {
+        // Initially set all interrupts to use the default handler
+        interrupt_manager_set_handler(i, isr_stub);
     }
 
-    // Set up CPU exception handlers (0-31)
-    for (size_t i = 0; i < 32; i++) {
+    // Install exception handlers
+    for (int i = 0; i < 32; i++) {
         interrupt_manager_set_handler(i, (void(*)())isr_stub_table[i]);
     }
 
     // Load IDT
-    load_idt(&idt_ptr);
+    asm volatile("lidt %0" : : "m"(idt_ptr));
 }
 
 void interrupt_manager_set_handler(uint8_t vector, void (*handler)()) {
     uint32_t handler_addr = (uint32_t)handler;
-    
-    if (handler == NULL) {
-        // Set as not present
-        idt[vector].offset_low = 0;
-        idt[vector].selector = 0;
-        idt[vector].zero = 0;
-        idt[vector].type_attr = 0x00; // Not present
-        idt[vector].offset_high = 0;
-        return;
-    }
-
     idt[vector].offset_low = handler_addr & 0xFFFF;
     idt[vector].selector = 0x08; // Kernel code segment
     idt[vector].zero = 0;
