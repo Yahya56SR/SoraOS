@@ -1,6 +1,7 @@
-#include "../include/process/process.h"
+#include "../include/process/process.h" // Include process.h
 #include "../include/memorys.h" // Include memorys.h
 #include <stdint.h>
+#include <string.h> // Include string.h
 
 // Function to create a new process
 Process* process_create(uint32_t id, const char* name) {

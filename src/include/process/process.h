@@ -1,39 +1,36 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
-#include <stddef.h>
 #include <stdint.h>
+#include <stddef.h>
 
-typedef struct Process Process;
+// Define the maximum length of a process name
+#define PROCESS_NAME_MAX_LENGTH 32
 
+// Define the possible states of a process
 typedef enum {
-    CREATED,
-    READY,
-    RUNNING,
-    BLOCKED,
-    TERMINATED
-} State;
+    PROCESS_STATE_READY,
+    PROCESS_STATE_RUNNING,
+    PROCESS_STATE_BLOCKED,
+    PROCESS_STATE_TERMINATED
+} ProcessState;
 
-struct Process {
-    char name[32];
-    uint32_t pid;
-    State state;
-    
-    uint32_t entry_point;
-    uint32_t code_start;
-    uint32_t code_size;
-    uint32_t data_start;
-    uint32_t data_size;
-    uint32_t bss_start;
-    uint32_t bss_size;
-    uint32_t stack_start;
-    uint32_t stack_size;
-    uint32_t kernel_esp;
-};
+// Define the Process structure
+typedef struct Process {
+    uint32_t id;             // Process ID
+    char name[PROCESS_NAME_MAX_LENGTH]; // Process name
+    ProcessState state;       // Process state
+    void* stack;            // Pointer to the process's stack
+    size_t stack_size;      // Size of the process's stack
+} Process;
 
-Process* process_create(const char* process_name);
+// Function prototypes
+Process* process_create(uint32_t id, const char* process_name);
+void process_set_stack(Process* process, void* stack, size_t stack_size);
+uint32_t process_get_id(const Process* process);
+const char* process_get_name(const Process* process);
+void process_set_state(Process* process, ProcessState state);
+ProcessState process_get_state(const Process* process);
 void process_destroy(Process* process);
-int process_allocate_memory(Process* process, size_t code_size, size_t data_size,
-                            size_t bss_size, size_t stack_size);
 
 #endif

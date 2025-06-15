@@ -13,6 +13,7 @@ fi
 
 # Create build directory
 mkdir -p build
+mkdir -p build/process
 
 # Compile assembly files with debug info
 echo "Compiling assembly files..."
